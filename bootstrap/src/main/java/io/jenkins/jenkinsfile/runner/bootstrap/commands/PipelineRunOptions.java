@@ -81,4 +81,10 @@ public class PipelineRunOptions extends PipelineOptions {
                     " This option defines the maximum time (in seconds) to wait for build log creation." +
                     " Defaults to 1 second.")
     public int writeLogInitTimeoutSeconds = 1;
+
+    @CommandLine.Option(names = "--fail-on-plugin-error",
+            description = "Fail the execution with a startup error if any plugin failed to load. Disabled by default: " +
+                    "Jenkins may still start when some plugins fail, and such runs used to succeed by chance. " +
+                    "Can also be enabled with the jenkinsfile.runner.failOnPluginError system property.")
+    public boolean failOnPluginError = false;
 }

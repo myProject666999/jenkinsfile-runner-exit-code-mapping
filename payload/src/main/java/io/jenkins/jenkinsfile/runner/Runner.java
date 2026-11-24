@@ -8,8 +8,11 @@ import hudson.model.Cause;
 import hudson.model.CauseAction;
 import hudson.model.Failure;
 import hudson.model.ParametersAction;
+import hudson.model.Result;
 import hudson.model.StringParameterValue;
 import hudson.model.queue.QueueTaskFuture;
+import hudson.PluginManager;
+import io.jenkins.jenkinsfile.runner.bootstrap.ExitCode;
 import io.jenkins.jenkinsfile.runner.bootstrap.commands.PipelineRunOptions;
 import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
@@ -40,7 +43,14 @@ public class Runner {
     /**
      * Main entry point invoked by the setup module
      */
-    public int run(PipelineRunOptions runOptions) throws Exception { 
+    public int run(PipelineRunOptions runOptions) throws Exception {
+        if (runOptions.failOnPluginError) {
+            int exitCode = checkFailedPlugins();
+            if (exitCode != 0) {
+                return exitCode;
+            }
+        }
+
         String[] jobPathNames = runOptions.jobName.split("/");
 
         for (String jobPathName : jobPathNames) {
@@ -48,7 +58,7 @@ public class Runner {
                 Jenkins.checkGoodName(jobPathName);
             } catch (Failure e) {
                 System.err.printf("invalid job name: '%s': %s%n", jobPathName, e.getMessage());
-                return -1;
+                return ExitCode.INVALID_INPUT;
             }
         }
 
@@ -94,7 +104,8 @@ public class Runner {
                     try {
                         scm.addCredentialToStore();
                     } catch (IOException | CredentialsUnavailableException e) {
-                        return -1;
+                        System.err.printf("failed to add SCM credentials to the credential store: %s%n", e.getMessage());
+                        return ExitCode.INVALID_INPUT;
                     }
                 }
                 w.setDefinition(new CpsScmFlowDefinition(scm.getSCM(), runOptions.jenkinsfile.getName()));
@@ -123,7 +134,34 @@ public class Runner {
         }
 
         f.get();    // wait for the completion
-        return b.getResult().ordinal;
+        Result result = b.getResult();
+        if (result == null) {
+            System.err.printf("Build %s finished without a result; treating this as an unexpected error.%n",
+                    b.getFullDisplayName());
+        }
+        // Result#toString() returns the stable result name (SUCCESS, UNSTABLE, ...); bootstrap
+        // maps the name string without depending on the Result type itself
+        return ExitCode.mapResultName(result != null ? result.toString() : null);
+    }
+
+    /**
+     * Fails the execution when one or more plugins could not be loaded.
+     * Only invoked when {@code --fail-on-plugin-error} (or the
+     * {@code jenkinsfile.runner.failOnPluginError} system property) is enabled.
+     *
+     * @return {@link ExitCode#JENKINS_STARTUP_ERROR} when failed plugins are present, otherwise 0
+     */
+    private int checkFailedPlugins() {
+        List<PluginManager.FailedPlugin> failedPlugins = Jenkins.get().getPluginManager().getFailedPlugins();
+        if (failedPlugins.isEmpty()) {
+            return 0;
+        }
+        System.err.printf("%d plugin(s) failed to load:%n", failedPlugins.size());
+        for (PluginManager.FailedPlugin failedPlugin : failedPlugins) {
+            System.err.printf(" - %s: %s%n", failedPlugin.name,
+                    failedPlugin.cause != null ? failedPlugin.cause.getMessage() : "unknown cause");
+        }
+        return ExitCode.JENKINS_STARTUP_ERROR;
     }
 
     private Folder createOrReturnFolder(Folder addToFolder, String folderName) throws IOException {        

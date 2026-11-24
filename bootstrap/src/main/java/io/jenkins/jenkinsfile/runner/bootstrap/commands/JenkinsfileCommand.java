@@ -1,5 +1,7 @@
 package io.jenkins.jenkinsfile.runner.bootstrap.commands;
 
+import io.jenkins.jenkinsfile.runner.bootstrap.InvalidInputException;
+
 import java.io.File;
 
 /**
@@ -17,8 +19,7 @@ public abstract class JenkinsfileCommand extends JenkinsLauncherCommand {
             pipelineOptions.jenkinsfile = new File("Jenkinsfile");
         }
         if (!pipelineOptions.jenkinsfile.exists()) {
-            System.err.println("no Jenkinsfile in current directory.");
-            System.exit(-1);
+            throw new InvalidInputException("no Jenkinsfile in current directory.");
         }
         if (pipelineOptions.jenkinsfile.isDirectory()) {
             pipelineOptions.jenkinsfile = new File(pipelineOptions.jenkinsfile, "Jenkinsfile");

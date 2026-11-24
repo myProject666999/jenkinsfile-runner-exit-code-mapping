@@ -4,6 +4,7 @@ import hudson.ClassicPluginStrategy;
 import hudson.PluginManager;
 import hudson.util.PluginServletFilter;
 import io.jenkins.jenkinsfile.runner.bootstrap.ClassLoaderBuilder;
+import io.jenkins.jenkinsfile.runner.bootstrap.JenkinsStartupException;
 import io.jenkins.jenkinsfile.runner.bootstrap.SideClassLoader;
 import io.jenkins.jenkinsfile.runner.bootstrap.commands.JenkinsLauncherCommand;
 import io.jenkins.jenkinsfile.runner.bootstrap.commands.JenkinsLauncherOptions;
@@ -140,11 +141,19 @@ public abstract class JenkinsLauncher<T extends JenkinsLauncherCommand> extends 
         Thread currentThread = Thread.currentThread();
         String originalThreadName = currentThread.getName();
         currentThread.setName(getThreadName());
-        before();
         try {
-            return doLaunch();
+            try {
+                before();
+            } catch (Throwable t) {
+                // Embedded Jenkins startup, WAR/plugin loading and other pre-flight failures
+                throw new JenkinsStartupException("Failed to start the Jenkins instance", t);
+            }
+            try {
+                return doLaunch();
+            } finally {
+                after();
+            }
         } finally {
-            after();
             currentThread.setName(originalThreadName);
         }
     }

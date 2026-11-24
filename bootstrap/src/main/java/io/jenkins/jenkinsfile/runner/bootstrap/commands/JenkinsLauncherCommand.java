@@ -2,9 +2,10 @@ package io.jenkins.jenkinsfile.runner.bootstrap.commands;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.jenkins.jenkinsfile.runner.bootstrap.ClassLoaderBuilder;
 import io.jenkins.jenkinsfile.runner.bootstrap.IApp;
+import io.jenkins.jenkinsfile.runner.bootstrap.InvalidInputException;
+import io.jenkins.jenkinsfile.runner.bootstrap.JenkinsStartupException;
 import io.jenkins.jenkinsfile.runner.bootstrap.SideClassLoader;
 import io.jenkins.jenkinsfile.runner.bootstrap.Util;
 import org.apache.commons.io.FileUtils;
@@ -60,13 +61,17 @@ public abstract class JenkinsLauncherCommand implements Callable<Integer> {
     public abstract String getAppClassName();
 
     @Override
-    @SuppressFBWarnings("DM_EXIT")
-    public Integer call() throws IllegalStateException {
+    public Integer call() {
         try {
             postConstruct();
             return runJenkinsfileRunnerApp();
-        } catch (Throwable ex) {
-            throw new RuntimeException("Unhandled exception", ex);
+        } catch (RuntimeException e) {
+            // Categorized exceptions (InvalidInputException, JenkinsStartupException) propagate as-is
+            throw e;
+        } catch (Throwable e) {
+            // Checked failures during startup/app execution are reported as unexpected errors
+            // by the execution exception handler installed in Bootstrap
+            throw new RuntimeException(e);
         }
     }
 
@@ -75,38 +80,43 @@ public abstract class JenkinsLauncherCommand implements Callable<Integer> {
      */
     private File cache = new File(System.getProperty("user.home") + "/.jenkinsfile-runner/");
 
-    @SuppressFBWarnings("DM_EXIT")
     public void postConstruct() throws IOException {
         final JenkinsLauncherOptions settings = getLauncherOptions();
 
         // Process the Jenkins version
         if (settings.version != null && settings.warDir != null) {
-            System.err.print("Error: --jenkins-war and --jenkins-version are mutually exclusive options");
-            System.exit(-1);
+            throw new InvalidInputException("Error: --jenkins-war and --jenkins-version are mutually exclusive options");
         }
         if (settings.version != null && !Util.isJenkinsVersionSupported(settings.version)) {
-            System.err.printf("Jenkins version [%s] not supported by this jenkinsfile-runner version (requires %s). %n",
+            throw new InvalidInputException(String.format(
+                    "Jenkins version [%s] not supported by this jenkinsfile-runner version (requires %s). %n",
                     settings.version,
-                    Util.getMininumJenkinsVersion());
-            System.exit(-1);
+                    Util.getMininumJenkinsVersion()));
         }
         if (settings.warDir == null) {
             // TODO: avoid modifying the option
-            settings.warDir = getJenkinsWar(settings.version);
+            try {
+                settings.warDir = getJenkinsWar(settings.version);
+            } catch (IOException e) {
+                throw new JenkinsStartupException("Failed to download the Jenkins WAR", e);
+            }
         }
         // Explode war if necessary
         String warPath = settings.warDir.getAbsolutePath();
         if(FilenameUtils.getExtension(warPath).equals("war") && new File(warPath).isFile()) {
             System.out.println("Exploding " + warPath +  ", this might take some time.");
-            settings.warDir = Util.explodeWar(warPath);
+            try {
+                settings.warDir = Util.explodeWar(warPath);
+            } catch (IOException e) {
+                throw new JenkinsStartupException("Failed to explode the Jenkins WAR: " + warPath, e);
+            }
         }
 
         if (settings.pluginsDir == null) {
             // TODO: avoid modifying the option
             settings.pluginsDir = new File("plugins.txt");
         } else if (!settings.pluginsDir.exists()) {
-            System.err.println("invalid plugins file.");
-            System.exit(-1);
+            throw new InvalidInputException("invalid plugins file.");
         }
 
         if (settings.pluginsDir.isFile()) {
@@ -123,7 +133,12 @@ public abstract class JenkinsLauncherCommand implements Callable<Integer> {
                     version = line.substring(i+1);
                 }
 
-                installPlugin(settings.pluginsDir, shortname, version);
+                try {
+                    installPlugin(settings.pluginsDir, shortname, version);
+                } catch (IOException e) {
+                    throw new JenkinsStartupException(
+                            String.format("Failed to download plugin %s (%s)", shortname, version), e);
+                }
             }
         }
     }

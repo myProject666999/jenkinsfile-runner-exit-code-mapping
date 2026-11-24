@@ -64,6 +64,10 @@ public class RunJenkinsfileCommand extends JenkinsfileCommand {
             System.setProperty("hudson.model.ParametersAction.keepUndefinedParameters", "true");
         }
 
+        if (Boolean.getBoolean("jenkinsfile.runner.failOnPluginError")) {
+            pipelineRunOptions.failOnPluginError = true;
+        }
+
         super.postConstruct();
     }
 

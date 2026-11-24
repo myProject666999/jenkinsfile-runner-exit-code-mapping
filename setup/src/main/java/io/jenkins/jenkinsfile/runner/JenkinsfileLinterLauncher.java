@@ -3,6 +3,7 @@ package io.jenkins.jenkinsfile.runner;
 import hudson.security.ACL;
 import hudson.security.ACLContext;
 import io.jenkins.cli.shaded.org.apache.commons.io.FileUtils;
+import io.jenkins.jenkinsfile.runner.bootstrap.ExitCode;
 import io.jenkins.jenkinsfile.runner.bootstrap.commands.LintJenkinsfileCommand;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -59,8 +60,8 @@ public class JenkinsfileLinterLauncher extends JenkinsLauncher<LintJenkinsfileCo
                             }
                         }
                     }
-                    // Return a non-zero exit code.
-                    return 1;
+                    // Lint failures are invalid input (the Jenkinsfile does not validate), see ExitCode
+                    return ExitCode.INVALID_INPUT;
                 } else {
                     // Wasn't expecting this. Rethrow.
                     throw e;

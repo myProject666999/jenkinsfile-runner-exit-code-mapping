@@ -102,7 +102,33 @@ Hello world!
 Finished: SUCCESS
 ....
 
-The exit code reflects the result of the build.
+==== Exit codes
+
+The exit code reflects the result of the build and, when Jenkins cannot even be started, the kind of startup failure.
+The build-result codes below are the `hudson.model.Result` ordinals and remain stable for backward compatibility.
+
+[cols="1,3", options="header"]
+|===
+| Exit code | Meaning
+
+| 0 | Build result `SUCCESS`
+| 1 | Build result `UNSTABLE`
+| 2 | Build result `FAILURE`
+| 3 | Build result `NOT_BUILT`
+| 4 | Build result `ABORTED`
+| 65 | Invalid command line or input file (`EX_DATA`): unknown options, missing/invalid Jenkinsfile or plugins file, unsupported Jenkins version, mutually exclusive options, or a failed `lint` invocation
+| 70 | Unexpected error (`EX_SOFTWARE`); also returned when the build finishes without a result
+| 71 | The build returned a result name that does not match any known `hudson.model.Result`
+| 75 | Jenkins core or a plugin could not be downloaded, exploded or loaded (`EX_TEMPFAIL`)
+|===
+
+Notes:
+
+* The legacy behavior of returning `-1` (visible as `255` at the process level) for invalid job names or unavailable credential stores has been replaced by the categorized codes above (invalid input -> `65`).
+* The `lint` command now returns `65` on validation failure instead of the generic `1`, so a lint failure can be distinguished from an `UNSTABLE` build.
+* By default Jenkins may still start when some plugins fail to load. With the `--fail-on-plugin-error` option (or the `jenkinsfile.runner.failOnPluginError` system property) enabled, Jenkinsfile Runner inspects the failed plugin list before the run, prints the failing plugin names and exits with `75`. The option is disabled by default; enabling it may turn pipelines that previously succeeded "by chance" despite failed plugins into failing executions.
+* When the process is terminated by an OS signal (for example by container orchestration), the exit code is determined by the JVM runtime and is not customized by Jenkinsfile Runner.
+
 The `demo` directory includes a few simple examples of Jenkinsfiles you can try out.
 
 === Command Line Interface (CLI)
